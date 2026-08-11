@@ -1,0 +1,67 @@
+# =============================================================================
+# Docker Build Context Exclusions
+# =============================================================================
+# Without this file, `docker build` sends EVERYTHING to the daemon.
+# With it: build context ~5 MB instead of ~600 MB.
+# =============================================================================
+
+# Version control
+.git
+.gitignore
+.gitattributes
+
+# Virtual environment (never ship local venvs into Docker)
+.venv
+venv
+env
+
+# Environment files with secrets
+.env
+.env.local
+.env.*.local
+
+# Python bytecode (will be regenerated inside container)
+__pycache__
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+
+# Test files (not needed in production image)
+tests/
+pytest.ini
+.pytest_cache
+.coverage
+htmlcov/
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Documentation & dev files
+*.md
+!README.md
+LICENSE
+
+# Docker files (don't include docker config inside the image)
+docker-compose*.yml
+.dockerignore
+
+# Build artifacts
+dist/
+build/
+*.egg-info/
+
+# CI/CD
+.github/
+.gitlab-ci.yml
+
+# Agents / AI config
+.agents/

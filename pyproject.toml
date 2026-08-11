@@ -1,0 +1,247 @@
+# =============================================================================
+# Digital Wallet Ledger Engine
+# =============================================================================
+# PEP 621 project metadata + dependency management.
+# Single source of truth for project config, dependencies, and tool settings.
+# =============================================================================
+
+[build-system]
+# -------------------------------------------------------------------------
+# Build system: tells pip HOW to build this project.
+# We use hatchling — lightweight, modern, and fast.
+# Alternative: setuptools (heavier, legacy), poetry-core (poetry ecosystem).
+# -------------------------------------------------------------------------
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["app"]
+
+[project]
+# -------------------------------------------------------------------------
+# Project metadata — PEP 621 standard fields.
+# -------------------------------------------------------------------------
+name = "digital-wallet-ledger-engine"
+version = "0.1.0"
+description = "Production-ready Digital Wallet + Ledger System with double-entry accounting"
+readme = "README.md"
+license = { text = "MIT" }
+requires-python = ">=3.11"
+# Python 3.11+ required for:
+#   - ExceptionGroup (structured error handling)
+#   - tomllib (built-in TOML parsing)
+#   - Performance improvements (~25% faster than 3.10)
+
+# -------------------------------------------------------------------------
+# Production dependencies — everything needed to run the app.
+# Pin MAJOR.MINOR, allow patch updates (e.g. >=1.0,<2.0).
+# Why not pin exact versions? Exact pins prevent security patches from
+# being picked up. Minor-range pins balance stability and security.
+# -------------------------------------------------------------------------
+dependencies = [
+    # --- Web Framework ---
+    "fastapi>=0.115.0,<1.0.0",
+    # FastAPI: async-first, auto-OpenAPI docs, Pydantic integration.
+    # Why FastAPI over Django REST? Async-native, faster, lighter.
+    # Why FastAPI over Flask? Built-in validation, auto docs, type hints.
+
+    "uvicorn[standard]>=0.32.0,<1.0.0",
+    # ASGI server to run FastAPI. [standard] includes uvloop + httptools
+    # for production-grade performance on Linux.
+
+    # --- Database ---
+    "sqlalchemy[asyncio]>=2.0.0,<3.0.0",
+    # SQLAlchemy 2.0 with async support. [asyncio] pulls in greenlet.
+    # We use the 2.0-style query API (select(), not session.query()).
+
+    "asyncpg>=0.30.0,<1.0.0",
+    # Async PostgreSQL driver. Fastest Python PG driver (C extension).
+    # Used by SQLAlchemy's async engine under the hood.
+
+    "alembic>=1.14.0,<2.0.0",
+    # Database migration tool. Generates migration scripts from model changes.
+    # Tightly integrated with SQLAlchemy.
+
+    # --- Authentication ---
+    "pyjwt[crypto]>=2.9.0,<3.0.0",
+    # JWT encoding/decoding. [crypto] adds RS256 support via cryptography.
+    # We use HS256 (symmetric) for simplicity; RS256 for microservices.
+
+    "bcrypt>=4.2.0,<5.0.0",
+    # Password hashing. Industry standard. Cost factor 12 = ~250ms per hash.
+    # Why not argon2? bcrypt is more widely supported and sufficient for
+    # our use case. Argon2 is better for GPU resistance but adds complexity.
+
+    "passlib[bcrypt]>=1.7.4,<2.0.0",
+    # High-level password hashing API. Wraps bcrypt with a clean interface.
+    # Handles hash format versioning automatically.
+
+    # --- Validation & Settings ---
+    "pydantic>=2.9.0,<3.0.0",
+    # Data validation using Python type hints. V2 is 5-17x faster than V1
+    # (Rust core via pydantic-core). All request/response schemas use this.
+
+    "pydantic-settings>=2.6.0,<3.0.0",
+    # Loads environment variables into typed Pydantic models.
+    # Supports .env files, nested models, and validation.
+
+    "python-dotenv>=1.0.0,<2.0.0",
+    # Reads .env files into os.environ. Used by pydantic-settings.
+
+    # --- Redis ---
+    "redis[hiredis]>=5.2.0,<6.0.0",
+    # Redis client. [hiredis] adds C parser for 10x faster responses.
+    # Used for: rate limiting, caching, idempotency key TTL.
+
+    # --- HTTP ---
+    "httpx>=0.28.0,<1.0.0",
+    # Modern async HTTP client. Used for:
+    #   1. Upstash Redis REST API calls (in production)
+    #   2. Webhook delivery to merchants
+    #   3. Test client for FastAPI (replaces requests in tests)
+
+    # --- Observability ---
+    "structlog>=24.4.0,<26.0.0",
+    # Structured logging — outputs JSON in production, pretty-prints in dev.
+    # Why not stdlib logging? structlog adds context (request_id, user_id)
+    # to every log line automatically. Essential for debugging in production.
+
+    "prometheus-client>=0.21.0,<1.0.0",
+    # Exposes /metrics endpoint for Prometheus/Grafana scraping.
+    # Tracks: request count, latency histogram, error rates, wallet operations.
+
+    # --- Utilities ---
+    "python-multipart>=0.0.17,<1.0.0",
+    # Required by FastAPI for form data parsing (login form, file uploads).
+
+    "email-validator>=2.2.0,<3.0.0",
+    # Validates email addresses in Pydantic schemas. Prevents garbage input.
+]
+
+# -------------------------------------------------------------------------
+# Optional dependency groups — installed separately for different contexts.
+# Usage: pip install -e ".[dev]" or pip install -e ".[dev,test]"
+# -------------------------------------------------------------------------
+[project.optional-dependencies]
+dev = [
+    "ruff>=0.8.0,<1.0.0",
+    # Linter + formatter (replaces flake8 + black + isort).
+    # Written in Rust — 10-100x faster than Python-based tools.
+
+    "mypy>=1.13.0,<2.0.0",
+    # Static type checker. Catches type errors before runtime.
+    # Essential in fintech — a wrong type in money calculations = real bugs.
+
+    "pre-commit>=4.0.0,<5.0.0",
+    # Git hooks: runs ruff + mypy before every commit.
+    # Prevents bad code from entering the repository.
+]
+
+test = [
+    "pytest>=8.3.0,<9.0.0",
+    # Test framework. Used by FastAPI, SQLAlchemy, and most Python projects.
+
+    "pytest-asyncio>=0.24.0,<1.0.0",
+    # Async test support. Required because our DB operations are async.
+
+    "pytest-cov>=6.0.0,<7.0.0",
+    # Code coverage reporting. Shows which lines are untested.
+
+    "httpx>=0.28.0,<1.0.0",
+    # Async test client for FastAPI. Replaces TestClient for async tests.
+
+    "factory-boy>=3.3.0,<4.0.0",
+    # Test data factories. Creates realistic test objects without boilerplate.
+    # Example: UserFactory.create(role="merchant") instead of 20 lines of setup.
+
+    "aiosqlite>=0.20.0,<1.0.0",
+    # SQLite async driver for tests. Tests run against SQLite for speed,
+    # but integration tests can target real PostgreSQL via Docker.
+]
+
+# =============================================================================
+# Tool Configuration — all in one file, no separate config files needed.
+# =============================================================================
+
+# -------------------------------------------------------------------------
+# Pytest configuration
+# -------------------------------------------------------------------------
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+# "auto" = all async test functions are automatically treated as async.
+# Without this, you'd need @pytest.mark.asyncio on every async test.
+python_files = ["test_*.py"]
+python_functions = ["test_*"]
+addopts = [
+    "-v",                  # Verbose output — shows each test name
+    "--strict-markers",    # Fail on unknown pytest markers (catches typos)
+    "--tb=short",          # Short tracebacks — easier to read
+]
+markers = [
+    "slow: marks tests as slow (deselect with '-m \"not slow\"')",
+    "integration: marks tests requiring real database",
+    "concurrency: marks concurrency/race-condition tests",
+]
+
+# -------------------------------------------------------------------------
+# Ruff — linter + formatter (replaces flake8, black, isort)
+# -------------------------------------------------------------------------
+[tool.ruff]
+target-version = "py311"
+line-length = 88
+# 88 chars = black's default. Wider than PEP 8's 79 but fits modern monitors.
+
+[tool.ruff.lint]
+select = [
+    "E",    # pycodestyle errors
+    "W",    # pycodestyle warnings
+    "F",    # pyflakes (unused imports, undefined names)
+    "I",    # isort (import sorting)
+    "N",    # pep8-naming (class names, function names)
+    "UP",   # pyupgrade (modernize Python syntax)
+    "B",    # flake8-bugbear (common bugs)
+    "S",    # flake8-bandit (security issues)
+    "A",    # flake8-builtins (shadowing builtins)
+    "C4",   # flake8-comprehensions (simplify comprehensions)
+    "RUF",  # Ruff-specific rules
+]
+ignore = [
+    "S101",   # Allow assert in tests
+    "B008",   # Allow Depends() in function arguments (FastAPI pattern)
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**/*.py" = ["S101", "S106"]
+# S101: assert is fine in tests
+# S106: hardcoded passwords are fine in tests
+
+# -------------------------------------------------------------------------
+# Mypy — static type checking
+# -------------------------------------------------------------------------
+[tool.mypy]
+python_version = "3.11"
+strict = true
+# strict = true enables ALL strict flags:
+#   - disallow_untyped_defs: every function must have type hints
+#   - disallow_any_generics: no bare List, Dict — must be List[int], etc.
+#   - warn_return_any: flag functions that return Any
+#   - check_untyped_defs: type-check inside untyped functions too
+plugins = ["pydantic.mypy"]
+
+[[tool.mypy.overrides]]
+module = ["tests.*"]
+disallow_untyped_defs = false
+# Relax type checking in tests — test functions don't need return types.
+
+# -------------------------------------------------------------------------
+# Coverage — minimum thresholds
+# -------------------------------------------------------------------------
+[tool.coverage.run]
+source = ["app"]
+omit = ["tests/*", "alembic/*"]
+
+[tool.coverage.report]
+fail_under = 80
+# Build fails if coverage drops below 80%. Enforced in CI.
+show_missing = true

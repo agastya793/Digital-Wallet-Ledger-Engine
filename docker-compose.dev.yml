@@ -1,0 +1,42 @@
+# =============================================================================
+# Docker Compose — Development Override
+# =============================================================================
+# Extends docker-compose.yml with development-specific settings:
+#   - Hot reload (--reload flag)
+#   - Volume mount for live code editing
+#   - Debug logging enabled
+#   - SQL query logging enabled
+#
+# Usage:
+#   docker compose -f docker-compose.yml -f docker-compose.dev.yml up
+#   # or use: make dev
+# =============================================================================
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    # Override the production CMD with --reload for hot reloading.
+    command: >
+      uvicorn app.main:app
+      --host 0.0.0.0
+      --port 8000
+      --reload
+      --reload-dir /app/app
+    volumes:
+      # Mount local code into the container for live editing.
+      # Changes to Python files trigger automatic restart.
+      - ./app:/app/app:cached
+      - ./tests:/app/tests:cached
+      - ./alembic:/app/alembic:cached
+      - ./scripts:/app/scripts:cached
+    environment:
+      APP_ENV: "development"
+      APP_DEBUG: "true"
+      DB_ECHO: "true"
+      # DB_ECHO=true logs all SQL queries — essential for debugging
+      # but extremely noisy in production.
+      LOG_LEVEL: "DEBUG"
+      DATABASE_URL: "postgresql+asyncpg://postgres:postgres@db:5432/wallet_db"
+      REDIS_URL: "redis://redis:6379/0"

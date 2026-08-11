@@ -1,0 +1,91 @@
+# =============================================================================
+# Digital Wallet Ledger Engine — Docker Compose (Production)
+# =============================================================================
+# 3-service stack: PostgreSQL 16 + Redis 7 + FastAPI app.
+#
+# Usage:
+#   docker compose up -d          # Start all services
+#   docker compose logs -f app    # Tail app logs
+#   docker compose down -v        # Stop + remove volumes (⚠ data loss)
+# =============================================================================
+
+services:
+  # -------------------------------------------------------------------
+  # PostgreSQL 16 — primary datastore
+  # -------------------------------------------------------------------
+  db:
+    image: postgres:16-alpine
+    # Alpine variant: ~80 MB vs ~380 MB for full Debian image.
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: wallet_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      # Named volume — data persists across container restarts.
+      # Use `docker compose down -v` to wipe it.
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  # -------------------------------------------------------------------
+  # Redis 7 — caching, rate limiting, idempotency keys
+  # -------------------------------------------------------------------
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    ports:
+      - "6380:6379"
+    command: >
+      redis-server
+      --maxmemory 256mb
+      --maxmemory-policy allkeys-lru
+      --appendonly yes
+      --appendfsync everysec
+    # --maxmemory 256mb:       cap RAM usage
+    # --allkeys-lru:           evict least-recently-used keys when full
+    # --appendonly yes:        AOF persistence (more durable than RDB)
+    # --appendfsync everysec:  fsync once per second (max 1s data loss)
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # -------------------------------------------------------------------
+  # FastAPI Application
+  # -------------------------------------------------------------------
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      DATABASE_URL: "postgresql+asyncpg://postgres:postgres@db:5432/wallet_db"
+      REDIS_URL: "redis://redis:6379/0"
+      APP_ENV: "production"
+      APP_DEBUG: "false"
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    # App container waits until BOTH db and redis report healthy.
+    # This prevents connection-refused errors on first request.
+
+# -------------------------------------------------------------------
+# Named volumes — persist data across container restarts
+# -------------------------------------------------------------------
+volumes:
+  pgdata:
+  redisdata:

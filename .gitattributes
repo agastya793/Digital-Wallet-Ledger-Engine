@@ -1,0 +1,35 @@
+# =============================================================================
+# Git Attributes — Line Ending Normalization
+# =============================================================================
+# Problem: Windows uses CRLF (\r\n), Linux uses LF (\n).
+# Shell scripts with CRLF cause "bad interpreter" errors in Docker.
+# This file forces LF for all critical file types.
+# =============================================================================
+
+# Default: auto-detect and normalize
+* text=auto
+
+# Force LF for files that MUST have Unix line endings
+*.sh      text eol=lf
+*.py      text eol=lf
+*.yml     text eol=lf
+*.yaml    text eol=lf
+*.toml    text eol=lf
+*.cfg     text eol=lf
+*.ini     text eol=lf
+*.md      text eol=lf
+*.txt     text eol=lf
+*.json    text eol=lf
+
+# Dockerfile and Makefile (no extension)
+Dockerfile  text eol=lf
+Makefile    text eol=lf
+
+# Binary files — never normalize
+*.png     binary
+*.jpg     binary
+*.jpeg    binary
+*.gif     binary
+*.ico     binary
+*.woff    binary
+*.woff2   binary
