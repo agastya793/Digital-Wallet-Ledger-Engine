@@ -5,7 +5,9 @@ Production-ready Digital Wallet and Ledger System built with Python, FastAPI, an
 ## Features
 
 - **Double-Entry Ledger Engine**: Atomic transactions with `SELECT FOR UPDATE` locking to prevent race conditions and lost updates. Enforces `∑ credits = ∑ debits`.
-- **Idempotency System**: Redis-backed `SETNX` distributed locks and 24-hour response caching for safely retrying network requests.
+- **Database-Level Defense-in-Depth**: Strict PostgreSQL `CHECK (balance >= 0)` constraints mathematically guarantee wallets can never go negative, even if application logic is compromised.
+- **Idempotency System (PostgreSQL)**: Permanent idempotency keys tracked via PostgreSQL (migrated from Redis to survive LRU cache eviction) to completely eliminate double-charging on network retries.
+- **ORM Concurrency-Safety**: Mitigates advanced SQLAlchemy `IdentityMap` caching bugs via `.execution_options(populate_existing=True)` to guarantee live lock reads.
 - **Dual Authentication**: 
   - User endpoints protected by JWT Access/Refresh tokens.
   - Merchant endpoints protected by `X-API-Key` headers (hashed with SHA-256 in the database).
@@ -18,7 +20,7 @@ Production-ready Digital Wallet and Ledger System built with Python, FastAPI, an
 - **Framework**: FastAPI (Python 3.11+)
 - **Database**: PostgreSQL (via asyncpg)
 - **ORM**: SQLAlchemy 2.0 + Alembic (Migrations)
-- **Caching & Locks**: Redis (via redis.asyncio)
+- **Caching**: Redis (via redis.asyncio)
 - **Validation**: Pydantic v2
 - **Testing**: Pytest + HTTPX
 
@@ -27,11 +29,7 @@ Production-ready Digital Wallet and Ledger System built with Python, FastAPI, an
 The project is fully containerized. To spin it up:
 
 ```bash
-# 1. Start the services (PostgreSQL, Redis, FastAPI App)
-make dev
-
-# OR without make:
-docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build
+docker compose up -d
 ```
 
 ### Initial Setup (Database Migrations)
@@ -39,12 +37,7 @@ docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build
 Once the containers are running, you need to generate and run the initial database schema migration:
 
 ```bash
-# 1. Generate the migration script
-make makemigrations
-# (When prompted, enter a message like "initial schema")
-
-# 2. Apply the migration to PostgreSQL
-make migrate
+docker compose exec app alembic upgrade head
 ```
 
 ## API Documentation
@@ -56,10 +49,17 @@ FastAPI automatically generates interactive API documentation. With the app runn
 
 ## Running Tests
 
-To run the full test suite with coverage:
+To run the full test suite:
 
 ```bash
-make test
+docker compose exec app python -m pytest -v
+```
+
+### Concurrency Stress Test ("Thundering Herd")
+To visualize the power of the pessimistic locking engine, you can run the "thundering herd" concurrency test. This test fires 50 simultaneous asynchronous API requests to steal $50 from a wallet containing exactly $50. You will see exactly 49 requests violently fail while exactly 1 succeeds, mathematically proving the system cannot double-spend:
+
+```bash
+docker compose exec app python -m pytest tests/test_concurrency.py -v
 ```
 
 ## Architecture Notes

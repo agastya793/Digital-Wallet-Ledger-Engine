@@ -12,22 +12,21 @@ from typing import AsyncGenerator
 
 import pytest
 import pytest_asyncio
-from httpx import AsyncClient
+from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.pool import StaticPool
 
-from app.database.core import get_db
+from app.database.dependencies import get_db
 from app.main import app
 from app.models.base import Base
 
-# Use SQLite in-memory for fast unit testing.
-# In a real CI, this could be pointed to a test Postgres database.
-TEST_DATABASE_URL = "sqlite+aiosqlite:///:memory:"
+# Use the real Postgres database instead of SQLite so that concurrent
+# SELECT FOR UPDATE locks and greenlet async thread pools actually work!
+TEST_DATABASE_URL = "postgresql+asyncpg://postgres:postgres@db:5432/wallet_db"
 
 engine = create_async_engine(
     TEST_DATABASE_URL,
-    connect_args={"check_same_thread": False},
-    poolclass=StaticPool,
+    echo=False,
 )
 TestingSessionLocal = async_sessionmaker(
     autocommit=False,
@@ -69,11 +68,13 @@ async def client(db_session: AsyncSession) -> AsyncGenerator[AsyncClient, None]:
     """
 
     async def override_get_db():
-        yield db_session
+        async with TestingSessionLocal() as session:
+            yield session
 
     app.dependency_overrides[get_db] = override_get_db
 
-    async with AsyncClient(app=app, base_url="http://test") as ac:
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as ac:
         yield ac
 
     app.dependency_overrides.clear()

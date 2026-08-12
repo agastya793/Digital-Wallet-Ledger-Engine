@@ -29,6 +29,7 @@ from datetime import datetime
 
 from sqlalchemy import (
     BigInteger,
+    CheckConstraint,
     DateTime,
     ForeignKey,
     String,
@@ -124,6 +125,13 @@ class LedgerEntry(Base, UUIDMixin):
     """
 
     __tablename__ = "ledger_entries"
+
+    __table_args__ = (
+        CheckConstraint(
+            "amount > 0",
+            name="chk_ledger_entry_amount_positive",
+        ),
+    )
 
     transaction_id: Mapped[str] = mapped_column(
         ForeignKey("transactions.id", ondelete="CASCADE"),

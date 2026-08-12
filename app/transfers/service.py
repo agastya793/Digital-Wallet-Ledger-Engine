@@ -169,6 +169,9 @@ class TransferService:
             ),
         ]
 
+        # Extract sender_email before commit to avoid async lazy-load crash
+        sender_email_val = sender.email
+
         # =================================================================
         # Step 7: Delegate to the ledger engine
         # =================================================================
@@ -185,7 +188,7 @@ class TransferService:
             operations=operations,
             description=(
                 description
-                or f"Transfer from {sender.email} to {recipient_email}"
+                or f"Transfer from {sender_email_val} to {recipient_email}"
             ),
         )
 
@@ -194,7 +197,7 @@ class TransferService:
         # =================================================================
         return TransferResponse(
             transaction_id=txn.id,
-            sender_email=sender.email,
+            sender_email=sender_email_val,
             recipient_email=recipient_email,
             amount=amount,
             amount_display=f"{amount / 100:.2f}",

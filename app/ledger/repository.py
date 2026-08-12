@@ -127,8 +127,11 @@ class LedgerRepository:
                     select(Wallet)
                     .where(Wallet.id == wallet_id)
                     .with_for_update()
-                    # with_for_update() → SELECT ... FOR UPDATE
-                    # Blocks other transactions from reading this row.
+                    .execution_options(populate_existing=True)
+                    # populate_existing=True is CRITICAL here!
+                    # Without it, if the wallet was queried earlier in the 
+                    # same request, SQLAlchemy will return the stale cached 
+                    # balance instead of the fresh locked row from Postgres!
                 )
                 result = await db.execute(stmt)
                 wallet = result.scalar_one_or_none()
@@ -203,7 +206,9 @@ class LedgerRepository:
                     .where(Wallet.id == str(op.wallet_id))
                     .values(balance=new_balance)
                 )
-                await db.execute(stmt)
+                res = await db.execute(stmt)
+                if res.rowcount != 1:
+                    raise RuntimeError(f"CRITICAL: Failed to update wallet {op.wallet_id}! Rowcount was {res.rowcount}.")
 
                 # Update in-memory cache for subsequent operations
                 # (important when multiple ops hit the same wallet)

@@ -15,6 +15,7 @@ Usage:
 import uuid
 from datetime import datetime
 
+import sqlalchemy
 from sqlalchemy import DateTime, func
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
@@ -42,11 +43,13 @@ class UUIDMixin:
     Trade-off: UUIDs are 16 bytes vs 4 bytes for INT. Acceptable for our scale.
     """
 
-    id: Mapped[uuid.UUID] = mapped_column(
+    id: Mapped[str] = mapped_column(
+        sqlalchemy.Uuid(as_uuid=False),
         primary_key=True,
-        default=uuid.uuid4,
-        # default runs in Python. server_default would run in SQL.
-        # Python-side is fine for UUIDs — deterministic, no DB round-trip.
+        default=lambda: str(uuid.uuid4()),
+        # default runs in Python. We generate a UUID and cast to string.
+        # Uuid(as_uuid=False) tells SQLAlchemy to accept and return strings,
+        # but store as native UUID in Postgres.
     )
 
 

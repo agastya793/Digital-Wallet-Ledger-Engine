@@ -17,6 +17,7 @@ Table relationships:
 
 from sqlalchemy import (
     BigInteger,
+    CheckConstraint,
     ForeignKey,
     String,
     UniqueConstraint,
@@ -45,7 +46,7 @@ class Wallet(Base, UUIDMixin, TimestampMixin):
 
     __tablename__ = "wallets"
 
-    # ---- Unique constraint: one wallet per currency per user ----
+    # ---- Constraints ----
     __table_args__ = (
         UniqueConstraint(
             "user_id",
@@ -53,6 +54,10 @@ class Wallet(Base, UUIDMixin, TimestampMixin):
             name="uq_user_currency",
             # Without this, a user could create multiple USD wallets.
             # That would make transfers ambiguous ("which USD wallet?").
+        ),
+        CheckConstraint(
+            "balance >= 0",
+            name="chk_wallet_balance_positive",
         ),
     )
 

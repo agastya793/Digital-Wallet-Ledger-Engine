@@ -146,8 +146,12 @@ class MerchantService:
         Returns a tuple of (CheckoutRead, MerchantAccount) so the
         route handler can fire the webhook with merchant details.
         """
-        # 1. Look up session
-        stmt = select(CheckoutSession).where(CheckoutSession.id == session_id)
+        # 1. Look up session with pessimistic lock
+        stmt = (
+            select(CheckoutSession)
+            .where(CheckoutSession.id == session_id)
+            .with_for_update()
+        )
         result = await db.execute(stmt)
         session = result.scalar_one_or_none()
 

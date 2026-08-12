@@ -16,12 +16,10 @@ Idempotency:
 
 from fastapi import APIRouter, Depends, Header
 from fastapi.responses import JSONResponse
-import redis.asyncio as aioredis
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.dependencies import get_current_user
 from app.auth.models import User
-from app.cache.core import get_redis
 from app.database.dependencies import get_db
 from app.idempotency.service import IdempotencyManager
 from app.transfers.schemas import TransferRequest, TransferResponse
@@ -44,7 +42,6 @@ async def p2p_transfer(
     body: TransferRequest,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
-    redis: aioredis.Redis = Depends(get_redis),
     idempotency_key: str | None = Header(
         None,
         alias="Idempotency-Key",
@@ -74,7 +71,7 @@ async def p2p_transfer(
     payload_dict = body.model_dump()
 
     async with IdempotencyManager(
-        redis_client=redis,
+        db=db,
         user_id=current_user.id,
         idempotency_key=idempotency_key,
         payload_dict=payload_dict,

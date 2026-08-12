@@ -39,6 +39,7 @@ from app.auth.models import RefreshToken, User  # noqa
 from app.wallet.models import Wallet  # noqa
 from app.ledger.models import LedgerEntry, Transaction  # noqa
 from app.merchant.models import CheckoutSession, MerchantAccount  # noqa
+from app.idempotency.models import IdempotencyKey  # noqa
 
 target_metadata = Base.metadata
 
