@@ -85,13 +85,15 @@ class LedgerRepository:
         total_credits = sum(op.amount for op in operations if op.entry_type == "credit")
 
         if total_debits != total_credits:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=(
-                    f"Transaction is not zero-sum. "
-                    f"Debits: {total_debits}, Credits: {total_credits}."
-                ),
-            )
+            # Domain exception: Sandbox deposits bring external money into the closed loop.
+            if transaction_type != "sandbox_deposit":
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=(
+                        f"Transaction is not zero-sum. "
+                        f"Debits: {total_debits}, Credits: {total_credits}."
+                    ),
+                )
 
         # =====================================================================
         # Step 2: Deadlock Prevention — Sort Wallet IDs

@@ -70,6 +70,38 @@ async def register_merchant(
     )
 
 
+@router.get(
+    "/me",
+    response_model=MerchantRead,
+    summary="Get your merchant profile",
+    responses={
+        404: {"description": "Not registered as a merchant"},
+    },
+)
+async def get_merchant_profile(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Get the authenticated user's merchant profile.
+    """
+    from sqlalchemy import select
+    from app.merchant.models import MerchantAccount
+    from fastapi import HTTPException
+    
+    stmt = select(MerchantAccount).where(MerchantAccount.user_id == str(current_user.id))
+    result = await db.execute(stmt)
+    merchant = result.scalar_one_or_none()
+    
+    if not merchant:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="You are not registered as a merchant.",
+        )
+        
+    return merchant
+
+
 @router.post(
     "/checkout/{session_id}/pay",
     response_model=CheckoutRead,

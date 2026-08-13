@@ -90,7 +90,7 @@ class Settings(BaseSettings):
     # -----------------------------------------------------------------
     # CORS
     # -----------------------------------------------------------------
-    CORS_ORIGINS: str = "http://localhost:3000,http://localhost:5173"
+    CORS_ORIGINS: str = "http://localhost:3000,http://localhost:5173,http://localhost:5174,http://localhost:5175"
     # Stored as comma-separated string in env var, parsed into list below.
 
     # -----------------------------------------------------------------

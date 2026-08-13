@@ -21,8 +21,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.auth.dependencies import get_current_user
 from app.auth.models import User
 from app.database.dependencies import get_db
-from app.wallet.schemas import WalletCreate, WalletRead, WalletUpdate
+from app.wallet.schemas import WalletCreate, WalletRead, WalletUpdate, WalletDeposit
 from app.wallet.service import WalletService
+from app.ledger.schemas import LedgerOperation
+from app.ledger.service import LedgerService
 
 router = APIRouter()
 
@@ -135,3 +137,88 @@ async def update_wallet(
         wallet_id=wallet_id,
         new_status=body.status,
     )
+
+
+@router.get(
+    "/{wallet_id}/history",
+    summary="Get wallet transaction history",
+    responses={
+        404: {"description": "Wallet not found or doesn't belong to you"},
+    },
+)
+async def get_wallet_history(
+    wallet_id: str,
+    limit: int = 50,
+    offset: int = 0,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Fetch the ledger transaction history for a specific wallet.
+    Returns the most recent entries first.
+    """
+    # First, verify the wallet belongs to the user
+    await WalletService.get_wallet_by_id(
+        db=db,
+        user=current_user,
+        wallet_id=wallet_id,
+    )
+    
+    # Then fetch the history using the ledger service
+    from app.ledger.service import LedgerService
+    return await LedgerService.get_wallet_history(
+        db=db,
+        wallet_id=wallet_id,
+        limit=limit,
+        offset=offset,
+    )
+
+
+@router.post(
+    "/{wallet_id}/deposit",
+    response_model=WalletRead,
+    summary="Sandbox: Deposit money into wallet",
+)
+async def deposit_funds(
+    wallet_id: str,
+    body: WalletDeposit,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Sandbox endpoint to mint money directly into a wallet.
+    Converts float amount to minor units (cents) and executes a one-sided ledger transaction.
+    """
+    import uuid
+    # 1. verify wallet belongs to user (this raises 404 if not found or unauthorized)
+    await WalletService.get_wallet_by_id(
+        db=db,
+        user=current_user,
+        wallet_id=wallet_id,
+    )
+    
+    amount_cents = int(body.amount * 100)
+    
+    # 2. Add money via ledger to preserve transaction history
+    operation = LedgerOperation(
+        wallet_id=uuid.UUID(wallet_id),
+        entry_type="credit",
+        amount=amount_cents
+    )
+    
+    await LedgerService.execute_transaction(
+        db=db,
+        transaction_type="sandbox_deposit",
+        operations=[operation],
+        description="Sandbox Deposit",
+    )
+    
+    # 3. Return updated wallet
+    updated_wallet = await WalletService.get_wallet_by_id(
+        db=db,
+        user=current_user,
+        wallet_id=wallet_id,
+    )
+    
+    return updated_wallet
+
