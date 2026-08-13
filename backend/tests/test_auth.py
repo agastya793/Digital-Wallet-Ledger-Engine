@@ -3,12 +3,8 @@ Tests for the authentication system (Phase 6).
 """
 
 import pytest
-from httpx import AsyncClient
-from sqlalchemy.ext.asyncio import AsyncSession
 from fastapi import status
-
-from app.auth.models import User
-from sqlalchemy import select
+from httpx import AsyncClient
 
 
 @pytest.mark.asyncio
@@ -41,7 +37,7 @@ async def test_register_duplicate_email(client: AsyncClient):
     await client.post("/api/v1/auth/register", json=payload)
     # Second registration should fail
     response = await client.post("/api/v1/auth/register", json=payload)
-    
+
     assert response.status_code == status.HTTP_409_CONFLICT
     assert "already exists" in response.json()["detail"]
 
@@ -54,7 +50,7 @@ async def test_login_success(client: AsyncClient):
         "/api/v1/auth/register",
         json={"email": "login@example.com", "password": "password123"},
     )
-    
+
     # Login (OAuth2 uses form data)
     response = await client.post(
         "/api/v1/auth/login",
@@ -74,7 +70,7 @@ async def test_login_wrong_password(client: AsyncClient):
         "/api/v1/auth/register",
         json={"email": "wrong@example.com", "password": "password123"},
     )
-    
+
     response = await client.post(
         "/api/v1/auth/login",
         data={"username": "wrong@example.com", "password": "wrongpassword"},

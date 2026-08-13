@@ -5,15 +5,18 @@ import {
   ArrowLeftRight, 
   Store,
   Bell,
-  LogOut
+  LogOut,
+  Activity
 } from 'lucide-react';
 import { useAuthStore } from '../../stores/authStore';
+import { useNotifications } from '../../lib/hooks/useNotifications';
 
 const navigation = [
   { name: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
   { name: 'Wallet', href: '/wallet', icon: Wallet },
   { name: 'Transfers', href: '/transfers', icon: ArrowLeftRight },
   { name: 'Merchants', href: '/merchants', icon: Store },
+  { name: 'System Ops', href: '/admin', icon: Activity },
 ];
 
 function classNames(...classes: string[]) {
@@ -22,6 +25,7 @@ function classNames(...classes: string[]) {
 
 export function AppLayout() {
   const location = useLocation();
+  useNotifications();
 
   return (
     <div className="flex h-screen w-full bg-zinc-950 text-zinc-50 overflow-hidden">

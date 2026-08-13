@@ -87,9 +87,7 @@ class WalletService:
         Returns an empty list if the user has no wallets.
         No authorization check needed — we filter by user.id.
         """
-        wallets = await WalletRepository.get_wallets_by_user(
-            db, str(user.id)
-        )
+        wallets = await WalletRepository.get_wallets_by_user(db, str(user.id))
         return [WalletRead.from_wallet(w) for w in wallets]
 
     @staticmethod

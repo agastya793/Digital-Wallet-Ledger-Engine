@@ -12,7 +12,7 @@ Schemas for the merchant payment gateway:
 import uuid
 from datetime import datetime
 
-from pydantic import BaseModel, Field, HttpUrl, field_validator
+from pydantic import BaseModel, Field, field_validator
 
 
 class MerchantRegister(BaseModel):

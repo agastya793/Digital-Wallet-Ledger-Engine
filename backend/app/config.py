@@ -47,7 +47,9 @@ class Settings(BaseSettings):
     # -----------------------------------------------------------------
     # Database (PostgreSQL)
     # -----------------------------------------------------------------
-    DATABASE_URL: str = "postgresql+asyncpg://postgres:postgres@localhost:5432/wallet_db"
+    DATABASE_URL: str = (
+        "postgresql+asyncpg://postgres:postgres@localhost:5432/wallet_db"
+    )
     # No default in production — must be explicitly set.
     # Default here is for local development convenience only.
 
@@ -108,14 +110,11 @@ class Settings(BaseSettings):
         # Looks for .env in the current working directory.
         # In Docker: the WORKDIR in Dockerfile.
         # Locally: the project root.
-
         env_file_encoding="utf-8",
         # Explicit encoding — prevents issues on Windows.
-
         case_sensitive=True,
         # ENV_VAR names are case-sensitive. DATABASE_URL ≠ database_url.
         # This prevents subtle bugs from case mismatches.
-
         extra="ignore",
         # Ignore env vars that don't match any field.
         # Without this, a typo like DATBASE_URL would silently be ignored

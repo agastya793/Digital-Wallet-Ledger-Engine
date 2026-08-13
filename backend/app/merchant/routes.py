@@ -17,12 +17,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.dependencies import get_current_user
 from app.auth.models import User
+from app.config import settings
 from app.database.dependencies import get_db
 from app.merchant.dependencies import get_current_merchant
 from app.merchant.models import MerchantAccount
 from app.merchant.schemas import (
     CheckoutCreate,
-    CheckoutPayRequest,
     CheckoutRead,
     MerchantRead,
     MerchantRegister,
@@ -30,8 +30,13 @@ from app.merchant.schemas import (
 )
 from app.merchant.service import MerchantService
 from app.merchant.webhooks import send_payment_webhook
+from app.middleware.rate_limit import RateLimiter
 
-router = APIRouter()
+router = APIRouter(
+    dependencies=[
+        Depends(RateLimiter(times=settings.RATE_LIMIT_PER_MINUTE, seconds=60))
+    ]
+)
 
 
 # =========================================================================
@@ -85,20 +90,23 @@ async def get_merchant_profile(
     """
     Get the authenticated user's merchant profile.
     """
-    from sqlalchemy import select
-    from app.merchant.models import MerchantAccount
     from fastapi import HTTPException
-    
-    stmt = select(MerchantAccount).where(MerchantAccount.user_id == str(current_user.id))
+    from sqlalchemy import select
+
+    from app.merchant.models import MerchantAccount
+
+    stmt = select(MerchantAccount).where(
+        MerchantAccount.user_id == str(current_user.id)
+    )
     result = await db.execute(stmt)
     merchant = result.scalar_one_or_none()
-    
+
     if not merchant:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="You are not registered as a merchant.",
         )
-        
+
     return merchant
 
 
@@ -107,7 +115,9 @@ async def get_merchant_profile(
     response_model=CheckoutRead,
     summary="Pay a checkout session",
     responses={
-        400: {"description": "Session not pending, insufficient funds, or inactive wallet"},
+        400: {
+            "description": "Session not pending, insufficient funds, or inactive wallet"
+        },
         404: {"description": "Session not found or no wallet in required currency"},
     },
 )
@@ -202,6 +212,7 @@ async def get_checkout(
     belonging to the authenticated merchant.
     """
     from sqlalchemy import select
+
     from app.merchant.models import CheckoutSession
 
     stmt = select(CheckoutSession).where(
@@ -213,6 +224,7 @@ async def get_checkout(
 
     if not session:
         from fastapi import HTTPException
+
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Checkout session not found.",

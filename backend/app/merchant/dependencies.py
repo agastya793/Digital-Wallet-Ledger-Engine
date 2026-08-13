@@ -58,9 +58,7 @@ async def get_current_merchant(
     # Hash the incoming key and look it up.
     hashed = hash_api_key(api_key)
 
-    stmt = select(MerchantAccount).where(
-        MerchantAccount.hashed_api_key == hashed
-    )
+    stmt = select(MerchantAccount).where(MerchantAccount.hashed_api_key == hashed)
     result = await db.execute(stmt)
     merchant = result.scalar_one_or_none()
 

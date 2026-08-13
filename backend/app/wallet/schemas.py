@@ -102,11 +102,13 @@ class WalletDeposit(BaseModel):
     """
     Request payload to deposit money into a wallet in sandbox mode.
     """
+
     amount: float = Field(
         ...,
         gt=0,
         description="Amount to deposit in major units (e.g. 10.50). Must be positive.",
     )
+
 
 class WalletUpdate(BaseModel):
     """

@@ -15,7 +15,7 @@ sessions themselves. Session lifecycle is controlled by the caller
 (typically the FastAPI dependency `get_db()`).
 """
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -123,7 +123,7 @@ class AuthRepository:
             user_id=user_id,
             hashed_token=hashed_token,
             expires_at=expires_at,
-            created_at=datetime.now(timezone.utc),
+            created_at=datetime.now(UTC),
         )
         db.add(token_record)
         await db.flush()
@@ -145,9 +145,7 @@ class AuthRepository:
         Returns None if no token exists with that hash
         (token was never issued, or was already deleted).
         """
-        stmt = select(RefreshToken).where(
-            RefreshToken.hashed_token == hashed_token
-        )
+        stmt = select(RefreshToken).where(RefreshToken.hashed_token == hashed_token)
         result = await db.execute(stmt)
         return result.scalar_one_or_none()
 

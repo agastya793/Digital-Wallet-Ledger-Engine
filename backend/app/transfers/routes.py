@@ -20,12 +20,18 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.dependencies import get_current_user
 from app.auth.models import User
+from app.config import settings
 from app.database.dependencies import get_db
 from app.idempotency.service import IdempotencyManager
+from app.middleware.rate_limit import RateLimiter
 from app.transfers.schemas import TransferRequest, TransferResponse
 from app.transfers.service import TransferService
 
-router = APIRouter()
+router = APIRouter(
+    dependencies=[
+        Depends(RateLimiter(times=settings.RATE_LIMIT_PER_MINUTE, seconds=60))
+    ]
+)
 
 
 @router.post(
@@ -76,7 +82,6 @@ async def p2p_transfer(
         idempotency_key=idempotency_key,
         payload_dict=payload_dict,
     ) as idem:
-
         # If we have a cached response, return it immediately.
         # No work is done — this is a replay of the original response.
         if idem.is_cached:
@@ -97,5 +102,8 @@ async def p2p_transfer(
 
         # Cache the successful response in Redis.
         await idem.save_response(200, response_data)
+
+        # Commit everything together (ledger transaction + idempotency update)
+        await db.commit()
 
         return JSONResponse(status_code=200, content=response_data)

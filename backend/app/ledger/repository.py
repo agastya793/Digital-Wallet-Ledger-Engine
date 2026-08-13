@@ -28,9 +28,12 @@ The core method is `execute_transaction()`. It:
 If ANY step fails, the entire savepoint is rolled back.
 """
 
+from datetime import datetime
+
 from fastapi import HTTPException, status
-from sqlalchemy import select, update
+from sqlalchemy import String, cast, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import contains_eager, selectinload
 
 from app.ledger.models import LedgerEntry, Transaction
 from app.ledger.schemas import LedgerOperation
@@ -113,7 +116,6 @@ class LedgerRepository:
         # not the entire session. The caller can still commit other work.
         # =====================================================================
         async with db.begin_nested():
-
             # =================================================================
             # Step 4: Lock Wallets (SELECT FOR UPDATE)
             # =================================================================
@@ -131,8 +133,8 @@ class LedgerRepository:
                     .with_for_update()
                     .execution_options(populate_existing=True)
                     # populate_existing=True is CRITICAL here!
-                    # Without it, if the wallet was queried earlier in the 
-                    # same request, SQLAlchemy will return the stale cached 
+                    # Without it, if the wallet was queried earlier in the
+                    # same request, SQLAlchemy will return the stale cached
                     # balance instead of the fresh locked row from Postgres!
                 )
                 result = await db.execute(stmt)
@@ -210,7 +212,9 @@ class LedgerRepository:
                 )
                 res = await db.execute(stmt)
                 if res.rowcount != 1:
-                    raise RuntimeError(f"CRITICAL: Failed to update wallet {op.wallet_id}! Rowcount was {res.rowcount}.")
+                    raise RuntimeError(
+                        f"CRITICAL: Failed to update wallet {op.wallet_id}! Rowcount was {res.rowcount}."
+                    )
 
                 # Update in-memory cache for subsequent operations
                 # (important when multiple ops hit the same wallet)
@@ -228,7 +232,11 @@ class LedgerRepository:
         transaction_id: str,
     ) -> Transaction | None:
         """Fetch a transaction with its entries by ID."""
-        stmt = select(Transaction).where(Transaction.id == transaction_id)
+        stmt = (
+            select(Transaction)
+            .options(selectinload(Transaction.entries))
+            .where(Transaction.id == transaction_id)
+        )
         result = await db.execute(stmt)
         return result.scalar_one_or_none()
 
@@ -238,19 +246,235 @@ class LedgerRepository:
         wallet_id: str,
         limit: int = 50,
         offset: int = 0,
+        search: str | None = None,
+        status_filter: str | None = None,
+        transaction_type: str | None = None,
+        entry_type: str | None = None,
+        min_amount: int | None = None,
+        max_amount: int | None = None,
+        start_date: datetime | None = None,
+        end_date: datetime | None = None,
     ) -> list[LedgerEntry]:
         """
-        Fetch ledger entries for a wallet, newest first.
-
-        Paginated to avoid loading thousands of entries at once.
-        Default limit of 50 matches common API pagination patterns.
+        Fetch ledger entries for a wallet with extensive filtering.
         """
         stmt = (
             select(LedgerEntry)
+            .join(Transaction, LedgerEntry.transaction_id == Transaction.id)
+            .options(contains_eager(LedgerEntry.transaction))
             .where(LedgerEntry.wallet_id == wallet_id)
-            .order_by(LedgerEntry.created_at.desc())
-            .limit(limit)
-            .offset(offset)
         )
+
+        if search:
+            search_pattern = f"%{search}%"
+            stmt = stmt.where(
+                or_(
+                    cast(Transaction.id, String).ilike(search_pattern),
+                    Transaction.reference_id.ilike(search_pattern),
+                    Transaction.description.ilike(search_pattern),
+                )
+            )
+
+        if status_filter:
+            stmt = stmt.where(Transaction.status == status_filter)
+
+        if transaction_type:
+            stmt = stmt.where(Transaction.transaction_type == transaction_type)
+
+        if entry_type:
+            stmt = stmt.where(LedgerEntry.entry_type == entry_type)
+
+        if min_amount is not None:
+            stmt = stmt.where(LedgerEntry.amount >= min_amount)
+
+        if max_amount is not None:
+            stmt = stmt.where(LedgerEntry.amount <= max_amount)
+
+        if start_date:
+            stmt = stmt.where(LedgerEntry.created_at >= start_date)
+
+        if end_date:
+            stmt = stmt.where(LedgerEntry.created_at <= end_date)
+
+        stmt = stmt.order_by(LedgerEntry.created_at.desc()).limit(limit).offset(offset)
         result = await db.execute(stmt)
         return list(result.scalars().all())
+
+    @staticmethod
+    async def create_transaction_intent(
+        db: AsyncSession,
+        transaction_type: str,
+        operations: list[LedgerOperation],
+        description: str | None = None,
+        reference_id: str | None = None,
+    ) -> Transaction:
+        """Create a pending transaction without moving money."""
+        total_debits = sum(op.amount for op in operations if op.entry_type == "debit")
+        total_credits = sum(op.amount for op in operations if op.entry_type == "credit")
+        if total_debits != total_credits and transaction_type != "sandbox_deposit":
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Transaction is not zero-sum. Debits: {total_debits}, Credits: {total_credits}.",
+            )
+
+        txn = Transaction(
+            transaction_type=transaction_type,
+            description=description,
+            reference_id=reference_id,
+            status="pending",
+            pending_operations=[op.model_dump(mode="json") for op in operations],
+        )
+        db.add(txn)
+        await db.flush()
+        return txn
+
+    @staticmethod
+    async def update_transaction_status(
+        db: AsyncSession,
+        transaction_id: str,
+        new_status: str,
+    ) -> Transaction:
+        """Safely transition a transaction's status."""
+        valid_transitions = {
+            "pending": ["processing", "failed", "reversed"],
+            "processing": ["completed", "failed"],
+            "completed": ["reversed", "refunded"],
+            "failed": [],
+            "reversed": [],
+            "refunded": [],
+        }
+
+        async with db.begin_nested():
+            stmt = (
+                select(Transaction)
+                .where(Transaction.id == transaction_id)
+                .with_for_update()
+            )
+            result = await db.execute(stmt)
+            txn = result.scalar_one_or_none()
+
+            if not txn:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="Transaction not found.",
+                )
+
+            if new_status not in valid_transitions.get(txn.status, []):
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Cannot transition transaction from '{txn.status}' to '{new_status}'.",
+                )
+
+            txn.status = new_status
+            await db.flush()
+            return txn
+
+    @staticmethod
+    async def commit_async_transaction(
+        db: AsyncSession,
+        transaction_id: str,
+    ) -> Transaction:
+        """Finalize a pending/processing transaction, execute ledger entries, update balances."""
+        async with db.begin_nested():
+            # 1. Lock Transaction
+            stmt = (
+                select(Transaction)
+                .where(Transaction.id == transaction_id)
+                .with_for_update()
+            )
+            result = await db.execute(stmt)
+            txn = result.scalar_one_or_none()
+
+            if not txn:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="Transaction not found.",
+                )
+
+            if txn.status not in ["pending", "processing"]:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Cannot commit transaction in '{txn.status}' state.",
+                )
+
+            if not txn.pending_operations:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Transaction has no pending operations to commit.",
+                )
+
+            operations = [LedgerOperation(**op) for op in txn.pending_operations]
+            unique_wallet_ids = sorted({str(op.wallet_id) for op in operations})
+
+            # 2. Lock Wallets
+            locked_wallets: dict[str, Wallet] = {}
+            for wallet_id in unique_wallet_ids:
+                stmt_w = (
+                    select(Wallet)
+                    .where(Wallet.id == wallet_id)
+                    .with_for_update()
+                    .execution_options(populate_existing=True)
+                )
+                res_w = await db.execute(stmt_w)
+                wallet = res_w.scalar_one_or_none()
+
+                if not wallet:
+                    raise HTTPException(
+                        status_code=status.HTTP_404_NOT_FOUND,
+                        detail=f"Wallet {wallet_id} not found.",
+                    )
+                if wallet.status != "active":
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail=f"Wallet {wallet_id} is {wallet.status}.",
+                    )
+
+                locked_wallets[str(wallet.id)] = wallet
+
+            # 3. Verify Funds
+            for op in operations:
+                if op.entry_type == "debit":
+                    wallet = locked_wallets[str(op.wallet_id)]
+                    if wallet.balance < op.amount:
+                        raise HTTPException(
+                            status_code=status.HTTP_400_BAD_REQUEST,
+                            detail=f"Insufficient funds in wallet {op.wallet_id}.",
+                        )
+
+            # 4. Create Entries and Update Balances
+            for op in operations:
+                wallet = locked_wallets[str(op.wallet_id)]
+                new_balance = (
+                    wallet.balance - op.amount
+                    if op.entry_type == "debit"
+                    else wallet.balance + op.amount
+                )
+
+                entry = LedgerEntry(
+                    transaction_id=str(txn.id),
+                    wallet_id=str(op.wallet_id),
+                    entry_type=op.entry_type,
+                    amount=op.amount,
+                    balance_after=new_balance,
+                )
+                db.add(entry)
+
+                res = await db.execute(
+                    update(Wallet)
+                    .where(Wallet.id == str(op.wallet_id))
+                    .values(balance=new_balance)
+                )
+                if res.rowcount != 1:
+                    raise RuntimeError(
+                        f"CRITICAL: Failed to update wallet {op.wallet_id}"
+                    )
+                wallet.balance = new_balance
+
+            # 5. Finalize Transaction State
+            txn.status = "completed"
+            txn.pending_operations = None
+
+            # Flush to database so entries relation can be eager loaded cleanly
+            await db.flush()
+
+        return txn

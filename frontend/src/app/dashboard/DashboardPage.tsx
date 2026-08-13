@@ -1,9 +1,11 @@
 import { useState } from 'react';
 import { Wallet, Loader2, ArrowUpRight, ArrowDownLeft, Plus, RefreshCw, Activity, ArrowDownToLine } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import { useWallets, useWalletHistory, useCreateWallet, useDepositMutation } from '../../lib/api/wallets';
 import { useAuthStore } from '../../stores/authStore';
 
 export function DashboardPage() {
+  const navigate = useNavigate();
   const userEmail = useAuthStore((state) => state.userEmail);
   const { data: wallets, isLoading: isLoadingWallets, refetch: refetchWallets, isRefetching } = useWallets();
   const { mutate: createWallet, isPending: isCreatingWallet } = useCreateWallet();
@@ -134,37 +136,39 @@ export function DashboardPage() {
           ) : history && history.length > 0 ? (
             <ul className="divide-y divide-zinc-800">
               {history.map((entry) => (
-                <li key={entry.id} className="p-4 sm:px-6 hover:bg-zinc-800/50 transition-colors">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center space-x-4">
-                      <div className={`p-2 rounded-full ${
-                        entry.entry_type === 'credit' 
-                          ? 'bg-emerald-500/10 text-emerald-400' 
-                          : 'bg-red-500/10 text-red-400'
-                      }`}>
-                        {entry.entry_type === 'credit' ? <ArrowDownLeft className="h-5 w-5" /> : <ArrowUpRight className="h-5 w-5" />}
-                      </div>
-                      <div>
-                        <p className="text-sm font-medium text-white">
-                          {entry.entry_type === 'credit' ? 'Money Received' : 'Money Sent'}
-                        </p>
-                        <p className="text-xs text-zinc-500 mt-0.5">
-                          {new Date(entry.created_at).toLocaleDateString('en-US', { 
-                            month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' 
-                          })}
-                        </p>
-                      </div>
+                <li 
+                  key={entry.id} 
+                  onClick={() => navigate(`/wallets/${activeWallet?.id}/transactions/${entry.transaction_id}`)}
+                  className="py-4 flex items-center justify-between group cursor-pointer hover:bg-zinc-800/30 px-4 sm:px-6 transition-all"
+                >
+                  <div className="flex items-center space-x-4">
+                    <div className={`p-2 rounded-full ${
+                      entry.entry_type === 'credit' 
+                        ? 'bg-emerald-500/10 text-emerald-400' 
+                        : 'bg-red-500/10 text-red-400'
+                    }`}>
+                      {entry.entry_type === 'credit' ? <ArrowDownLeft className="h-5 w-5" /> : <ArrowUpRight className="h-5 w-5" />}
                     </div>
-                    <div className="text-right">
-                      <p className={`text-sm font-bold ${
-                        entry.entry_type === 'credit' ? 'text-emerald-400' : 'text-white'
-                      }`}>
-                        {entry.entry_type === 'credit' ? '+' : '-'}${entry.amount_display}
+                    <div>
+                      <p className="text-sm font-medium text-white group-hover:text-indigo-400 transition-colors">
+                        {entry.entry_type === 'credit' ? 'Money Received' : 'Money Sent'}
                       </p>
                       <p className="text-xs text-zinc-500 mt-0.5">
-                        Balance: ${entry.balance_after_display}
+                        {new Date(entry.created_at).toLocaleDateString('en-US', { 
+                          month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' 
+                        })}
                       </p>
                     </div>
+                  </div>
+                  <div className="text-right">
+                    <p className={`text-sm font-bold ${
+                      entry.entry_type === 'credit' ? 'text-emerald-400' : 'text-white'
+                    }`}>
+                      {entry.entry_type === 'credit' ? '+' : '-'}${entry.amount_display}
+                    </p>
+                    <p className="text-xs text-zinc-500 mt-0.5">
+                      Balance: ${entry.balance_after_display}
+                    </p>
                   </div>
                 </li>
               ))}

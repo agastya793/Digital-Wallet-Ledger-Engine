@@ -59,6 +59,7 @@ export function useDepositMutation(walletId: string) {
 export interface LedgerEntry {
   id: string;
   transaction_id: string;
+  wallet_id: string;
   entry_type: 'debit' | 'credit';
   amount: number;
   amount_display: string;
@@ -76,5 +77,27 @@ export function useWalletHistory(walletId: string | undefined) {
       return response.data;
     },
     enabled: !!walletId, // Only run the query if we have a wallet ID
+  });
+}
+
+export interface TransactionRead {
+  id: string;
+  transaction_type: string;
+  description: string | null;
+  reference_id: string | null;
+  status: string;
+  entries: LedgerEntry[];
+  created_at: string;
+}
+
+// Fetch transaction detail for a specific wallet
+export function useTransactionDetail(walletId: string | undefined, transactionId: string | undefined) {
+  return useQuery({
+    queryKey: ['transaction-detail', walletId, transactionId],
+    queryFn: async () => {
+      const response = await apiClient.get<TransactionRead>(`/wallets/${walletId}/transactions/${transactionId}`);
+      return response.data;
+    },
+    enabled: !!walletId && !!transactionId,
   });
 }

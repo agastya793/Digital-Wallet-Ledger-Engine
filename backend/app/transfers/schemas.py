@@ -10,6 +10,7 @@ Google Pay, etc.
 """
 
 import uuid
+
 from pydantic import BaseModel, EmailStr, Field, field_validator
 
 

@@ -71,6 +71,7 @@ def create_app() -> FastAPI:
     )
 
     from app.wallet.routes import router as wallet_router
+
     app.include_router(
         wallet_router,
         prefix="/api/v1/wallets",
@@ -78,6 +79,7 @@ def create_app() -> FastAPI:
     )
 
     from app.transfers.routes import router as transfers_router
+
     app.include_router(
         transfers_router,
         prefix="/api/v1/transfers",
@@ -85,10 +87,26 @@ def create_app() -> FastAPI:
     )
 
     from app.merchant.routes import router as merchant_router
+
     app.include_router(
         merchant_router,
         prefix="/api/v1/merchant",
         tags=["Merchant"],
+    )
+
+    from app.reconciliation.routes import router as reconciliation_router
+
+    app.include_router(
+        reconciliation_router,
+        prefix="/api/v1",
+    )
+
+    from app.notifications.routes import router as notifications_router
+
+    app.include_router(
+        notifications_router,
+        prefix="/api/v1/notifications",
+        tags=["Notifications"],
     )
 
     return app

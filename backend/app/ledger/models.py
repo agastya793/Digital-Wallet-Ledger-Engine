@@ -36,6 +36,7 @@ from sqlalchemy import (
     Text,
     func,
 )
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base, TimestampMixin, UUIDMixin
@@ -79,11 +80,22 @@ class Transaction(Base, UUIDMixin, TimestampMixin):
 
     status: Mapped[str] = mapped_column(
         String(20),
+        CheckConstraint(
+            "status IN ('pending', 'processing', 'completed', 'failed', 'reversed', 'refunded')",
+            name="chk_transaction_status",
+        ),
         nullable=False,
         default="completed",
         # For synchronous transactions, status is always "completed".
         # Future async flows (bank transfers, pending approvals) may use
         # "pending" → "completed" / "failed".
+    )
+
+    pending_operations: Mapped[list[dict] | None] = mapped_column(
+        JSONB,
+        nullable=True,
+        # Stores the intended LedgerOperations while status is pending/processing.
+        # Cleared or kept for audit when completed.
     )
 
     # ---- Relationships ----

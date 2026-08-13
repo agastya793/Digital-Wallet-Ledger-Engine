@@ -11,6 +11,7 @@ export interface LedgerEntry {
   id: string;
   transaction_id: string;
   wallet_id: string;
+  entry_type: 'debit' | 'credit';
   amount: number;
   direction: 'debit' | 'credit';
   created_at: string;

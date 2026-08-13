@@ -11,10 +11,10 @@ It configures:
 import asyncio
 from logging.config import fileConfig
 
-from alembic import context
 from sqlalchemy import pool
 from sqlalchemy.ext.asyncio import async_engine_from_config
 
+from alembic import context
 from app.config import settings
 from app.models.base import Base
 
@@ -40,6 +40,7 @@ from app.wallet.models import Wallet  # noqa
 from app.ledger.models import LedgerEntry, Transaction  # noqa
 from app.merchant.models import CheckoutSession, MerchantAccount  # noqa
 from app.idempotency.models import IdempotencyKey  # noqa
+from app.reconciliation.models import ReconciliationJob, ReconciliationDiscrepancy  # noqa
 
 target_metadata = Base.metadata
 
@@ -65,7 +66,7 @@ def run_migrations_offline() -> None:
         context.run_migrations()
 
 
-def do_run_migrations(connection) -> None:  # noqa: ANN001
+def do_run_migrations(connection) -> None:
     """Execute migrations against a live connection."""
     context.configure(connection=connection, target_metadata=target_metadata)
 

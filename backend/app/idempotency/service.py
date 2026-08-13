@@ -8,6 +8,7 @@ making the system immune to cache evictions.
 import hashlib
 import json
 import uuid
+from datetime import UTC, datetime
 from typing import Any
 
 from fastapi import HTTPException, status
@@ -65,12 +66,19 @@ class IdempotencyManager:
                     detail="Idempotency key already used for a different payload.",
                 )
 
-            # Thundering herd
+            # Thundering herd / Stale Lock Recovery
             if existing.status == "processing":
-                raise HTTPException(
-                    status_code=status.HTTP_409_CONFLICT,
-                    detail="A request with this idempotency key is currently processing.",
-                )
+                now = datetime.now(UTC)
+                if (now - existing.updated_at).total_seconds() > 300:
+                    # 5 minutes have passed. Assume the worker crashed.
+                    # Delete the stale record so we can acquire the lock again.
+                    await self.db.delete(existing)
+                    await self.db.commit()
+                else:
+                    raise HTTPException(
+                        status_code=status.HTTP_409_CONFLICT,
+                        detail="A request with this idempotency key is currently processing.",
+                    )
 
             # Completed
             if existing.status == "completed":
@@ -107,7 +115,7 @@ class IdempotencyManager:
         delete the idempotency key so the user can retry.
         """
         if exc_type and self.idem_record:
-            # The database session might be in an error state (e.g. if the route 
+            # The database session might be in an error state (e.g. if the route
             # triggered an IntegrityError). We must rollback first.
             await self.db.rollback()
             await self.db.delete(self.idem_record)
@@ -116,6 +124,10 @@ class IdempotencyManager:
     async def save_response(self, status_code: int, response_data: dict[str, Any]):
         """
         Cache the successful response in the database.
+
+        NOTE: This does NOT commit the transaction anymore.
+        The caller must commit the transaction so that the financial
+        operation and the idempotency state update are atomic.
         """
         if not self.idem_record:
             return
@@ -123,7 +135,7 @@ class IdempotencyManager:
         self.idem_record.status = "completed"
         self.idem_record.response_code = status_code
         self.idem_record.response_body = response_data
-        
+
         # Merge is required in case the object became detached
         self.db.add(self.idem_record)
-        await self.db.commit()
+        # Commit is deferred to the caller's Unit of Work

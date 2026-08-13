@@ -39,3 +39,11 @@ export function useRegisterMutation() {
     },
   });
 }
+
+export function useLogoutMutation() {
+  return useMutation({
+    mutationFn: async () => {
+      await apiClient.post('/auth/logout');
+    },
+  });
+}

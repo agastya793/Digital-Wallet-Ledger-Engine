@@ -8,7 +8,7 @@ it immune to Redis cache evictions (LRU policies).
 
 from typing import Any
 
-from sqlalchemy import Integer, JSON, String, UniqueConstraint
+from sqlalchemy import JSON, Integer, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models.base import Base, TimestampMixin, UUIDMixin
@@ -38,15 +38,15 @@ class IdempotencyKey(Base, UUIDMixin, TimestampMixin):
 
     user_id: Mapped[str] = mapped_column(String(36), nullable=False, index=True)
     idempotency_key: Mapped[str] = mapped_column(String(255), nullable=False)
-    
+
     request_hash: Mapped[str] = mapped_column(String(64), nullable=False)
-    
+
     status: Mapped[str] = mapped_column(
         String(20),
         nullable=False,
         default="processing",
     )
-    
+
     response_code: Mapped[int | None] = mapped_column(Integer, nullable=True)
     response_body: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
 

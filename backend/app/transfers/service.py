@@ -27,6 +27,7 @@ from app.auth.models import User
 from app.auth.repository import AuthRepository
 from app.ledger.schemas import LedgerOperation
 from app.ledger.service import LedgerService
+from app.notifications.service import NotificationService
 from app.transfers.schemas import TransferResponse
 from app.wallet.repository import WalletRepository
 
@@ -187,9 +188,38 @@ class TransferService:
             transaction_type="p2p_transfer",
             operations=operations,
             description=(
-                description
-                or f"Transfer from {sender_email_val} to {recipient_email}"
+                description or f"Transfer from {sender_email_val} to {recipient_email}"
             ),
+        )
+
+        amount_str = f"{amount / 100:.2f}"
+
+        # Publish event to sender
+        await NotificationService.publish_transaction_event(
+            user_id=str(sender.id),
+            event_type="transaction_completed",
+            payload={
+                "transaction_id": str(txn.id),
+                "type": "sent",
+                "amount": amount_str,
+                "currency": currency,
+                "partner": recipient_email,
+                "status": txn.status,
+            },
+        )
+
+        # Publish event to recipient
+        await NotificationService.publish_transaction_event(
+            user_id=str(recipient.id),
+            event_type="transaction_completed",
+            payload={
+                "transaction_id": str(txn.id),
+                "type": "received",
+                "amount": amount_str,
+                "currency": currency,
+                "partner": sender_email_val,
+                "status": txn.status,
+            },
         )
 
         # =================================================================
@@ -200,7 +230,7 @@ class TransferService:
             sender_email=sender_email_val,
             recipient_email=recipient_email,
             amount=amount,
-            amount_display=f"{amount / 100:.2f}",
+            amount_display=amount_str,
             currency=currency,
             description=description,
             status=txn.status,

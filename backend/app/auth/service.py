@@ -20,7 +20,7 @@ Error handling strategy:
   In a microservice, you'd raise domain exceptions and map them in routes.
 """
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from fastapi import HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -196,7 +196,7 @@ class AuthService:
             )
 
         # 4. Check expiration
-        if token_record.expires_at < datetime.now(timezone.utc):
+        if token_record.expires_at < datetime.now(UTC):
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Refresh token has expired. Please log in again.",
@@ -247,7 +247,7 @@ class AuthService:
         raw_refresh = generate_refresh_token()
 
         # 3. Store hashed refresh token
-        refresh_expires = datetime.now(timezone.utc) + timedelta(
+        refresh_expires = datetime.now(UTC) + timedelta(
             days=settings.REFRESH_TOKEN_EXPIRE_DAYS
         )
         hashed_refresh = hash_refresh_token(raw_refresh)

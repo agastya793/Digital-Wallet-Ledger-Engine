@@ -37,23 +37,30 @@ class WalletRepository:
         currency: str,
     ) -> Wallet:
         """
-        Insert a new wallet with zero balance.
-
-        The caller must ensure:
-        1. The user doesn't already have a wallet in this currency.
-        2. The currency code is valid (validated by Pydantic schema).
-
-        Balance starts at 0. The only way to increase it is through
-        the ledger system (deposits, transfers).
+        Insert a new wallet with zero balance. Uses an atomic upsert
+        to handle race conditions gracefully.
         """
-        wallet = Wallet(
-            user_id=user_id,
-            currency=currency,
-            balance=0,
-            status="active",
+        from sqlalchemy.dialects.postgresql import insert
+
+        stmt = (
+            insert(Wallet)
+            .values(user_id=user_id, currency=currency, balance=0, status="active")
+            .on_conflict_do_nothing(index_elements=["user_id", "currency"])
+            .returning(Wallet)
         )
-        db.add(wallet)
-        await db.flush()
+
+        result = await db.execute(stmt)
+        wallet = result.scalar_one_or_none()
+
+        if not wallet:
+            # Another concurrent request created it just now. Fetch it.
+            stmt_get = select(Wallet).where(
+                Wallet.user_id == user_id,
+                Wallet.currency == currency,
+            )
+            res = await db.execute(stmt_get)
+            wallet = res.scalar_one_or_none()
+
         return wallet
 
     # =====================================================================
@@ -85,9 +92,7 @@ class WalletRepository:
         Ordered by creation date (oldest first).
         """
         stmt = (
-            select(Wallet)
-            .where(Wallet.user_id == user_id)
-            .order_by(Wallet.created_at)
+            select(Wallet).where(Wallet.user_id == user_id).order_by(Wallet.created_at)
         )
         result = await db.execute(stmt)
         return list(result.scalars().all())
@@ -132,9 +137,5 @@ class WalletRepository:
         Note: this does NOT update the balance. Balance changes
         go exclusively through the ledger repository (Phase 8).
         """
-        stmt = (
-            update(Wallet)
-            .where(Wallet.id == wallet_id)
-            .values(status=new_status)
-        )
+        stmt = update(Wallet).where(Wallet.id == wallet_id).values(status=new_status)
         await db.execute(stmt)

@@ -104,8 +104,4 @@ class Wallet(Base, UUIDMixin, TimestampMixin):
     )
 
     def __repr__(self) -> str:
-        return (
-            f"<Wallet {self.currency} "
-            f"balance={self.balance} "
-            f"status={self.status}>"
-        )
+        return f"<Wallet {self.currency} balance={self.balance} status={self.status}>"

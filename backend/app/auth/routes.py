@@ -19,17 +19,23 @@ OAuth2 compatibility:
     We map "username" to "email" internally.
 """
 
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.dependencies import get_current_user
 from app.auth.models import User
-from app.auth.schemas import RefreshTokenRequest, Token, UserCreate, UserRead
+from app.auth.schemas import Token, UserCreate, UserRead
 from app.auth.service import AuthService
+from app.config import settings
 from app.database.dependencies import get_db
+from app.middleware.rate_limit import RateLimiter
 
-router = APIRouter()
+router = APIRouter(
+    dependencies=[
+        Depends(RateLimiter(times=settings.RATE_LIMIT_AUTH_PER_MINUTE, seconds=60))
+    ]
+)
 
 
 @router.post(
@@ -73,6 +79,7 @@ async def register(
     },
 )
 async def login(
+    response: Response,
     form_data: OAuth2PasswordRequestForm = Depends(),
     db: AsyncSession = Depends(get_db),
 ):
@@ -94,6 +101,17 @@ async def login(
         email=form_data.username,
         password=form_data.password,
     )
+
+    # Set the refresh token as an HttpOnly cookie
+    response.set_cookie(
+        key="refresh_token",
+        value=token_pair.refresh_token,
+        httponly=True,
+        secure=True,  # Should be True in production (HTTPS)
+        samesite="lax",
+        max_age=7 * 24 * 60 * 60,  # 7 days
+    )
+
     return token_pair
 
 
@@ -106,7 +124,8 @@ async def login(
     },
 )
 async def refresh_token(
-    body: RefreshTokenRequest,
+    request: Request,
+    response: Response,
     db: AsyncSession = Depends(get_db),
 ):
     """
@@ -117,11 +136,46 @@ async def refresh_token(
     presented, ALL tokens for that user are revoked as a security
     precaution (potential token theft detected).
     """
+    refresh_token = request.cookies.get("refresh_token")
+    if not refresh_token:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Refresh token missing from cookies",
+        )
+
     token_pair = await AuthService.refresh_access_token(
         db=db,
-        raw_refresh_token=body.refresh_token,
+        raw_refresh_token=refresh_token,
     )
+
+    # Set the new refresh token in the cookie
+    response.set_cookie(
+        key="refresh_token",
+        value=token_pair.refresh_token,
+        httponly=True,
+        secure=True,
+        samesite="lax",
+        max_age=7 * 24 * 60 * 60,
+    )
+
     return token_pair
+
+
+@router.post(
+    "/logout",
+    summary="Logout user",
+)
+async def logout(response: Response):
+    """
+    Clear the refresh token cookie to log the user out.
+    """
+    response.delete_cookie(
+        key="refresh_token",
+        httponly=True,
+        secure=True,
+        samesite="lax",
+    )
+    return {"detail": "Logged out successfully"}
 
 
 @router.get(

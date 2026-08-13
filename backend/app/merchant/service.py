@@ -13,7 +13,7 @@ This service orchestrates across multiple domains:
 - Webhooks (notify merchant of payment)
 """
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from fastapi import HTTPException, status
 from sqlalchemy import select
@@ -60,9 +60,7 @@ class MerchantService:
         NEVER stored. If the merchant loses it, they must regenerate.
         """
         # Check for existing merchant account
-        stmt = select(MerchantAccount).where(
-            MerchantAccount.user_id == str(user.id)
-        )
+        stmt = select(MerchantAccount).where(MerchantAccount.user_id == str(user.id))
         result = await db.execute(stmt)
         existing = result.scalar_one_or_none()
 
@@ -234,7 +232,7 @@ class MerchantService:
         # 7. Update session status
         session.status = "paid"
         session.paid_by_user_id = str(user.id)
-        session.paid_at = datetime.now(timezone.utc)
+        session.paid_at = datetime.now(UTC)
         session.transaction_id = str(txn.id)
         await db.commit()
         await db.refresh(session)
