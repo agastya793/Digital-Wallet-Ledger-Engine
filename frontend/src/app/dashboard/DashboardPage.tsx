@@ -1,14 +1,58 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Wallet, Loader2, ArrowUpRight, ArrowDownLeft, Plus, RefreshCw, Activity, ArrowDownToLine } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useWallets, useWalletHistory, useCreateWallet, useDepositMutation } from '../../lib/api/wallets';
 import { useAuthStore } from '../../stores/authStore';
+import { toast } from 'sonner';
 
 export function DashboardPage() {
   const navigate = useNavigate();
   const userEmail = useAuthStore((state) => state.userEmail);
   const { data: wallets, isLoading: isLoadingWallets, refetch: refetchWallets, isRefetching } = useWallets();
   const { mutate: createWallet, isPending: isCreatingWallet } = useCreateWallet();
+  
+  const [isCreateWalletOpen, setIsCreateWalletOpen] = useState(false);
+  const [currencyInput, setCurrencyInput] = useState('');
+
+  const closeCreateWalletDialog = () => {
+    setIsCreateWalletOpen(false);
+    setCurrencyInput('');
+  };
+
+  const handleCreateWallet = () => {
+    const currency = currencyInput.trim().toUpperCase();
+    if (!currency) {
+      toast.error('Please enter a currency code.');
+      return;
+    }
+    if (currency.length !== 3) {
+      toast.error('Currency must be exactly 3 letters.');
+      return;
+    }
+    if (!/^[A-Z]+$/.test(currency)) {
+      toast.error('Currency must contain only letters.');
+      return;
+    }
+    createWallet(currency, {
+      onSuccess: () => {
+        closeCreateWalletDialog();
+      },
+      onError: (err: any) => {
+        toast.error(err.response?.data?.detail || 'Failed to create wallet.');
+      },
+    });
+  };
+
+  useEffect(() => {
+    if (!isCreateWalletOpen) return;
+    const handleEscape = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && !isCreatingWallet) {
+        closeCreateWalletDialog();
+      }
+    };
+    window.addEventListener('keydown', handleEscape);
+    return () => window.removeEventListener('keydown', handleEscape);
+  }, [isCreateWalletOpen, isCreatingWallet]);
   
   // Default to the first wallet (usually USD) if available
   const [selectedWalletId, setSelectedWalletId] = useState<string | null>(null);
@@ -100,26 +144,73 @@ export function DashboardPage() {
 
           {/* New Wallet Button placeholder */}
           <button 
-            onClick={() => {
-              const currency = window.prompt('Enter 3-letter currency code (e.g. USD, EUR, GBP):', 'USD');
-              if (currency && currency.length === 3) {
-                createWallet(currency.toUpperCase());
-              } else if (currency) {
-                alert('Currency must be exactly 3 letters.');
-              }
-            }}
-            disabled={isCreatingWallet}
-            className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-zinc-800 bg-zinc-900/20 p-6 hover:bg-zinc-900/50 hover:border-zinc-700 transition-all group disabled:opacity-50"
+            onClick={() => setIsCreateWalletOpen(true)}
+            className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-zinc-800 bg-zinc-900/20 p-6 hover:bg-zinc-900/50 hover:border-zinc-700 transition-all group"
           >
             <div className="p-3 rounded-full bg-zinc-800 group-hover:bg-indigo-500/20 group-hover:text-indigo-400 text-zinc-400 transition-colors mb-3">
-              {isCreatingWallet ? <Loader2 className="h-6 w-6 animate-spin" /> : <Plus className="h-6 w-6" />}
+              <Plus className="h-6 w-6" />
             </div>
             <p className="text-sm font-medium text-zinc-300 group-hover:text-white transition-colors">
-              {isCreatingWallet ? 'Creating...' : 'Open New Wallet'}
+              Open New Wallet
             </p>
           </button>
         </div>
       </div>
+
+      {isCreateWalletOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div
+            className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+            onClick={() => !isCreatingWallet && closeCreateWalletDialog()}
+          />
+          <div className="relative w-full max-w-md bg-zinc-900 border border-zinc-800 rounded-2xl p-6 shadow-2xl">
+            <h2 className="text-lg font-semibold text-white">Create New Wallet</h2>
+            <p className="mt-2 text-sm text-zinc-400">
+              Enter a 3-letter ISO currency code to open a new wallet (e.g. EUR, GBP).
+            </p>
+            <div className="mt-6">
+              <label htmlFor="currency-code" className="block text-sm font-medium text-zinc-300">
+                Currency code
+              </label>
+              <input
+                id="currency-code"
+                type="text"
+                value={currencyInput}
+                onChange={(e) => setCurrencyInput(e.target.value.toUpperCase())}
+                placeholder="EUR"
+                maxLength={3}
+                autoFocus
+                className="mt-2 block w-full rounded-lg border-0 bg-zinc-950 py-2.5 px-3 text-white shadow-sm ring-1 ring-inset ring-zinc-800 focus:ring-2 focus:ring-inset focus:ring-indigo-500 sm:text-sm uppercase"
+              />
+            </div>
+            <div className="mt-6 flex justify-end gap-3">
+              <button
+                type="button"
+                onClick={closeCreateWalletDialog}
+                disabled={isCreatingWallet}
+                className="px-4 py-2 text-sm font-medium text-zinc-300 hover:text-white border border-zinc-700 rounded-lg hover:border-zinc-500 transition-colors disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleCreateWallet}
+                disabled={isCreatingWallet}
+                className="flex items-center px-4 py-2 text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-500 rounded-lg transition-colors disabled:opacity-50"
+              >
+                {isCreatingWallet ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin mr-2" />
+                    Creating...
+                  </>
+                ) : (
+                  'Create Wallet'
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Transaction History Section */}
       <div className="mt-8">

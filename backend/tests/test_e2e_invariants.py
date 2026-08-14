@@ -105,7 +105,7 @@ async def test_e2e_financial_invariants(client: AsyncClient, db_session):
 
     assert debits == 3000
     assert credit_amounts == 3000
-    assert debits == credits  # Zero sum holds
+    assert debits == credit_amounts  # Zero sum holds
 
     # 6. Verify Idempotency (Invariant 5)
     idem_payload = {

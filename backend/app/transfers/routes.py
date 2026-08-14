@@ -75,10 +75,11 @@ async def p2p_transfer(
     """
     # Build payload dict for idempotency hash comparison.
     payload_dict = body.model_dump()
+    sender_id = current_user.id
 
     async with IdempotencyManager(
         db=db,
-        user_id=current_user.id,
+        user_id=sender_id,
         idempotency_key=idempotency_key,
         payload_dict=payload_dict,
     ) as idem:
@@ -90,11 +91,12 @@ async def p2p_transfer(
         # Execute the transfer (first time).
         result = await TransferService.execute_p2p_transfer(
             db=db,
-            sender=current_user,
+            sender_id=sender_id,
             recipient_email=body.recipient_email,
             amount=body.amount,
             currency=body.currency,
             description=body.description,
+            idempotency_key=idempotency_key,
         )
 
         # Serialize for caching and response.

@@ -15,6 +15,7 @@ import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
+from app.cache.core import redis_client
 from app.database.dependencies import get_db
 from app.main import app
 from app.models.base import Base
@@ -41,6 +42,18 @@ def event_loop():
     loop = asyncio.get_event_loop_policy().new_event_loop()
     yield loop
     loop.close()
+
+
+async def _delete_rate_limit_keys() -> None:
+    async for key in redis_client.scan_iter(match="rate_limit:*"):
+        await redis_client.delete(key)
+
+
+@pytest_asyncio.fixture(autouse=True)
+async def clear_rate_limit_keys() -> AsyncGenerator[None, None]:
+    """Remove stale Redis rate-limit counters before each test."""
+    await _delete_rate_limit_keys()
+    yield
 
 
 @pytest_asyncio.fixture(scope="function")

@@ -20,10 +20,11 @@ Flow for a P2P transfer (Alice sends $50 to Bob):
     7. Return TransferResponse.
 """
 
+import uuid
+
 from fastapi import HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.auth.models import User
 from app.auth.repository import AuthRepository
 from app.ledger.schemas import LedgerOperation
 from app.ledger.service import LedgerService
@@ -43,18 +44,19 @@ class TransferService:
     @staticmethod
     async def execute_p2p_transfer(
         db: AsyncSession,
-        sender: User,
+        sender_id: uuid.UUID | str,
         recipient_email: str,
         amount: int,
         currency: str,
         description: str | None = None,
+        idempotency_key: str | None = None,
     ) -> TransferResponse:
         """
         Execute a peer-to-peer transfer.
 
         Args:
             db: Async database session.
-            sender: The authenticated user sending money.
+            sender_id: The authenticated user's ID sending money.
             recipient_email: Email of the person receiving money.
             amount: Amount in minor units (e.g., 5000 = $50.00).
             currency: ISO 4217 currency code.
@@ -70,6 +72,13 @@ class TransferService:
             HTTPException 404: Sender has no wallet in this currency.
             HTTPException 400: Insufficient funds (raised by ledger).
         """
+
+        sender = await AuthRepository.get_user_by_id(db, str(sender_id))
+        if not sender:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Could not validate credentials.",
+            )
 
         # =================================================================
         # Step 1: Look up recipient by email
@@ -190,6 +199,7 @@ class TransferService:
             description=(
                 description or f"Transfer from {sender_email_val} to {recipient_email}"
             ),
+            reference_id=idempotency_key,
         )
 
         amount_str = f"{amount / 100:.2f}"
